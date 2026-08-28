@@ -34,7 +34,8 @@ export default function PatientProfileModal({
   onViewLabReport,
   onViewPrescription,
   onDownloadReport,
-  onStartConsultation
+  onStartConsultation,
+  onCallPatient
 }) {
   const [activeSection, setActiveSection] = useState('overview');
 
@@ -889,7 +890,7 @@ export default function PatientProfileModal({
                     <p className="text-slate-900 font-bold">{patient.emergencyContact}</p>
                     <p className="text-rose-900 font-mono font-bold text-sm">{patient.emergencyPhone}</p>
                     <button
-                      onClick={() => window.open(`tel:${patient.emergencyPhone}`)}
+                      onClick={() => onCallPatient ? onCallPatient({ name: `${patient.name} (${patient.emergencyContact || 'Emergency Contact'})`, phone: patient.emergencyPhone || patient.phone, photo: patient.photo }) : window.open(`tel:${patient.emergencyPhone}`)}
                       className="mt-2 w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
                     >
                       <Phone className="w-4 h-4" /> Call Emergency Contact

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import logo from '../assets/jankotilogo1.png';
 import {
   Activity,
   Calendar,
@@ -11,7 +12,10 @@ import {
   Heart,
   FileText,
   Bell,
-  Stethoscope
+  Stethoscope,
+  Volume2,
+  VolumeX,
+  BellRing
 } from 'lucide-react';
 
 export default function Navbar({
@@ -22,8 +26,36 @@ export default function Navbar({
   setSearchQuery,
   unreadMessagesCount,
   emergencyCount,
-  onOpenGlobalSearch
+  onOpenGlobalSearch,
+  isMuted,
+  isPlayingAudio,
+  onToggleAudioMute,
+  notificationPermission,
+  onRequestNotificationPermission
 }) {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formattedDate = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  const formattedTime = currentTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+
   const navItems = [
     { id: 'home', label: 'Home', icon: Activity },
     { id: 'patients', label: 'My Patients', icon: Users },
@@ -37,19 +69,17 @@ export default function Navbar({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
-      {/* Top Branding & Search Bar */}
+      {/* Top Branding, Live Date & Time, Search Bar & Profile */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
+        <div className="flex items-center justify-between h-16 gap-3">
           
           {/* Logo & Portal Identity */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')}>
-            <div className="w-10 h-10 rounded-xl medx-gradient-brand flex items-center justify-center text-white shadow-md shadow-sky-500/20">
-              <Heart className="w-6 h-6 fill-white/20 stroke-[2.5]" />
-            </div>
+            <img src={logo} alt="Jankoti Logo" className="h-8 w-auto object-contain" />
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-extrabold tracking-tight text-slate-900">Med<span className="text-sky-600">X</span></span>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 text-sky-800 border border-sky-200 hidden sm:inline-block">
                   Doctor Portal
                 </span>
               </div>
@@ -58,7 +88,7 @@ export default function Navbar({
           </div>
 
           {/* Prominent Global Patient Search Bar */}
-          <div className="flex-1 max-w-xl mx-2 hidden md:block">
+          <div className="flex-1 max-w-md mx-2 hidden md:block">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -69,7 +99,7 @@ export default function Navbar({
                   setSearchQuery(e.target.value);
                   if (onOpenGlobalSearch) onOpenGlobalSearch();
                 }}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-slate-800 placeholder-slate-400 transition-all"
+                className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-slate-800 placeholder-slate-400 transition-all"
               />
               {searchQuery && (
                 <button
@@ -82,17 +112,65 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* Quick Doctor Profile & Emergency Pill */}
-          <div className="flex items-center gap-3">
-            {/* Quick Emergency Status */}
+          {/* LIVE DATE & TIME HEADER BADGE (Visible across all main pages) */}
+          <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-slate-900 text-white rounded-xl shadow-2xs border border-slate-800">
+            <Clock className="w-4 h-4 text-sky-400 animate-pulse flex-shrink-0" />
+            <div className="text-right">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-none">
+                {formattedDate}
+              </div>
+              <div className="font-mono text-xs font-extrabold text-sky-300 leading-tight">
+                {formattedTime}
+              </div>
+            </div>
+          </div>
+
+          {/* GLOBAL EMERGENCY SOS STATUS & AUDIO ALARM CONTROLS */}
+          <div className="flex items-center gap-2">
+            
+            {/* Global Emergency SOS Badge (Active & Clickable on All Pages) */}
             {emergencyCount > 0 && (
               <button
                 onClick={() => setActiveTab('emergency')}
-                className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold hover:bg-rose-100 transition-colors animate-pulse-subtle"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-extrabold shadow-sm hover:bg-rose-700 transition-all animate-pulse"
+                title="Click to open Active Emergency SOS Alerts"
               >
-                <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                <AlertTriangle className="w-4 h-4 text-white" />
                 <span>{emergencyCount} Emergency SOS</span>
+              </button>
+            )}
+
+            {/* Global Sound Siren Toggle (Persists & controllable on all pages) */}
+            {emergencyCount > 0 && onToggleAudioMute && (
+              <button
+                onClick={onToggleAudioMute}
+                className={`p-2 rounded-xl text-xs font-bold transition-all border ${
+                  isMuted
+                    ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                    : isPlayingAudio
+                    ? 'bg-rose-100 text-rose-700 border-rose-300 animate-bounce'
+                    : 'bg-amber-50 text-amber-800 border-amber-300'
+                }`}
+                title={isMuted ? 'Unmute Global SOS Siren' : 'Mute Global SOS Siren'}
+              >
+                {isMuted ? (
+                  <VolumeX className="w-4 h-4 text-slate-500" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-rose-600" />
+                )}
+              </button>
+            )}
+
+            {/* Device Notification Request Button */}
+            {notificationPermission !== 'granted' && onRequestNotificationPermission && (
+              <button
+                onClick={onRequestNotificationPermission}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold hover:bg-amber-100 transition-all"
+                title="Enable browser system notifications for critical SOS alerts"
+              >
+                <BellRing className="w-4 h-4 text-amber-600" />
+                <span className="hidden xl:inline">Enable SOS Alerts</span>
               </button>
             )}
 
@@ -114,6 +192,7 @@ export default function Navbar({
                 className="w-9 h-9 rounded-lg object-cover ring-2 ring-sky-500/20"
               />
             </div>
+
           </div>
         </div>
 

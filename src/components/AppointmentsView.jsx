@@ -9,7 +9,8 @@ import {
   AlertCircle,
   Plus,
   Search,
-  Filter
+  Filter,
+  Phone
 } from 'lucide-react';
 
 export default function AppointmentsView({
@@ -19,7 +20,8 @@ export default function AppointmentsView({
   onStartConsultation,
   onRescheduleAppointment,
   onCancelAppointment,
-  onAcceptAppointment
+  onAcceptAppointment,
+  onCallPatient
 }) {
   const [activeTab, setActiveTab] = useState('Today');
   const [showRescheduleModal, setShowRescheduleModal] = useState(null);
@@ -164,6 +166,15 @@ export default function AppointmentsView({
                       >
                         <Video className="w-3.5 h-3.5" />
                         <span>Start Consultation</span>
+                      </button>
+
+                      <button
+                        onClick={() => onCallPatient ? onCallPatient(matchedPatient) : window.open(`tel:${matchedPatient.phone || '+919811234567'}`)}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+                        title="Call Patient Phone"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Call</span>
                       </button>
 
                       <button

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
 import DoctorHome from './components/DoctorHome';
 import MyPatients from './components/MyPatients';
@@ -11,6 +11,7 @@ import PatientProfileModal from './components/PatientProfileModal';
 import StartConsultationModal from './components/StartConsultationModal';
 import LabReportModal from './components/LabReportModal';
 import PrescriptionSlipModal from './components/PrescriptionSlipModal';
+import ActivePhoneCallModal from './components/ActivePhoneCallModal';
 import Toast from './components/Toast';
 
 import {
@@ -25,6 +26,13 @@ import {
   initialRecentActivity,
   initialMyDaySchedule
 } from './data/mockData';
+import {
+  initNotificationService,
+  requestPushNotificationPermission,
+  sendWebPushNotification,
+  dispatchGatewaySmsAlert,
+  executeEmergencyBroadcast
+} from './services/notificationService';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
@@ -32,10 +40,43 @@ export default function App() {
   
   // Data states
   const [doctorProfile, setDoctorProfile] = useState(initialDoctorProfile);
-  const [patients, setPatients] = useState(initialPatients);
+  const [patients, setPatients] = useState(() => {
+    try {
+      const saved = localStorage.getItem('medx_patients');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('localStorage read error:', e);
+    }
+    return initialPatients;
+  });
   const [appointments, setAppointments] = useState(initialAppointments);
   const [emergencyAlerts, setEmergencyAlerts] = useState(initialEmergencyAlerts);
   const [messages, setMessages] = useState(initialMessages);
+
+  // Sync patients to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('medx_patients', JSON.stringify(patients));
+    } catch (e) {
+      console.warn('localStorage write error:', e);
+    }
+  }, [patients]);
+
+  const handleAddPatient = (newPatient) => {
+    setPatients(prev => [newPatient, ...prev]);
+    showToast(`Patient ${newPatient.name} (${newPatient.id}) enrolled successfully!`, 'success');
+  };
+
+  const handleDeletePatient = (patientId) => {
+    setPatients(prev => prev.filter(p => p.id !== patientId));
+    if (selectedPatientForProfile && selectedPatientForProfile.id === patientId) {
+      setSelectedPatientForProfile(null);
+    }
+    showToast('Patient record deleted permanently.', 'warning');
+  };
 
   // Enhancement data states
   const [needsAttention, setNeedsAttention] = useState(initialNeedsAttention);
@@ -49,6 +90,24 @@ export default function App() {
   const [selectedConsultationAppointment, setSelectedConsultationAppointment] = useState(null);
   const [selectedLabReport, setSelectedLabReport] = useState(null);
   const [selectedPrescription, setSelectedPrescription] = useState(null);
+  const [activePhoneCall, setActivePhoneCall] = useState(null);
+
+  const handleCallPatient = (callTarget) => {
+    if (!callTarget) return;
+    const name = callTarget.name || callTarget.patientName || 'Patient';
+    const phone = callTarget.phone || callTarget.emergencyPhone || '+91 98112 34567';
+    const photo = callTarget.photo;
+    const age = callTarget.age;
+    const bloodGroup = callTarget.bloodGroup;
+
+    setActivePhoneCall({ name, phone, photo, age, bloodGroup });
+    showToast(`Initiating cellular HD phone call to ${name} (${phone})...`, 'info');
+    try {
+      window.location.href = `tel:${phone}`;
+    } catch (e) {
+      console.warn('tel protocol trigger:', e);
+    }
+  };
 
   // Toast feedback state
   const [toast, setToast] = useState(null);
@@ -56,6 +115,185 @@ export default function App() {
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  // Global Audio & Web Notification State
+  const [isMuted, setIsMuted] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [audioError, setAudioError] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
+  const audioRef = useRef(null);
+
+  const activeEmergencyCount = emergencyAlerts.length;
+
+  // Initialize Service Worker and global tab switcher on mount
+  useEffect(() => {
+    initNotificationService();
+    if (typeof window !== 'undefined') {
+      window.setActiveTabGlobal = setActiveTab;
+    }
+  }, []);
+
+  // Request browser notification permission
+  const requestDeviceNotificationPermission = async () => {
+    const permission = await requestPushNotificationPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      showToast('Live Web Push & Device notifications enabled for critical SOS alerts!', 'success');
+    } else if (permission === 'denied') {
+      showToast('Notification permission denied by browser settings.', 'warning');
+    } else {
+      showToast('Web Notifications API not supported on this browser.', 'warning');
+    }
+  };
+
+  // Dispatch Emergency SOS Alert across Web Push, SMS Gateway & Alarm
+  const handleTriggerEmergencySOS = async (customAlert = null, recipientPhone = '+91 98112 34567', gatewayConfig = {}) => {
+    const alertToDispatch = customAlert || {
+      id: `SOS-${Math.floor(100 + Math.random() * 900)}`,
+      patientId: 'PX-10482',
+      patientName: 'Rajesh Kumar',
+      age: 64,
+      alertType: 'Critical Arrhythmia & HR Spikes (142 BPM)',
+      vitalSeverity: 'Critical High Risk',
+      vitalsAtAlert: 'BP: 88/54 mmHg | HR: 142 BPM | SpO2: 89%',
+      location: 'Emergency Bay ER-2',
+      coordinates: '28.6139° N, 77.2090° E',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'SOS ACTIVE'
+    };
+
+    setEmergencyAlerts(prev => [alertToDispatch, ...prev.filter(a => a.id !== alertToDispatch.id)]);
+    setIsMuted(false);
+
+    const result = await executeEmergencyBroadcast(alertToDispatch, recipientPhone, gatewayConfig);
+
+    showToast(
+      `🚨 LIVE SOS BROADCAST DISPATCHED! Web Push (${result.webPushResult.method || 'Sent'}) & SMS (${result.smsResult.status || 'Delivered'}) sent to connected phone & laptop.`,
+      'error'
+    );
+
+    return result;
+  };
+
+  // Global Emergency SOS Audio Manager
+  useEffect(() => {
+    if (activeEmergencyCount > 0 && !isMuted) {
+      if (!audioRef.current) {
+        try {
+          audioRef.current = new Audio('/sos-alarm.mp3');
+          audioRef.current.loop = true;
+        } catch (err) {
+          console.error('Failed to create global Audio instance:', err);
+          setAudioError(true);
+        }
+      }
+
+      if (audioRef.current) {
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlayingAudio(true);
+              setAudioError(false);
+            })
+            .catch(err => {
+              console.warn('Global SOS audio autoplay blocked by browser:', err);
+              setIsPlayingAudio(false);
+              setAudioError(true);
+            });
+        }
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        setIsPlayingAudio(false);
+      }
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        setIsPlayingAudio(false);
+      }
+    };
+  }, [activeEmergencyCount, isMuted]);
+
+  // Fire Web System Notification when active emergency alerts exist
+  useEffect(() => {
+    if (activeEmergencyCount > 0 && notificationPermission === 'granted') {
+      const latestAlert = emergencyAlerts[0];
+      if (latestAlert) {
+        try {
+          const matchedPatient = patients.find(p => p.id === latestAlert.patientId);
+          const notification = new Notification(`🚨 CRITICAL EMERGENCY SOS: ${latestAlert.patientName}`, {
+            body: `Alert: ${latestAlert.alertType}\nLocation: ${latestAlert.location}\nVitals: ${latestAlert.vitalsAtAlert}`,
+            icon: matchedPatient?.photo || '/favicon.svg',
+            tag: `sos-${latestAlert.id}`,
+            requireInteraction: true
+          });
+
+          notification.onclick = () => {
+            window.focus();
+            setActiveTab('emergency');
+          };
+        } catch (e) {
+          console.warn('System notification launch error:', e);
+        }
+      }
+    }
+  }, [activeEmergencyCount, notificationPermission]);
+
+  // Global Audio Mute / Unmute Toggle
+  const toggleAudioMute = () => {
+    if (isMuted) {
+      setIsMuted(false);
+      if (activeEmergencyCount > 0 && audioRef.current) {
+        audioRef.current.play()
+          .then(() => {
+            setIsPlayingAudio(true);
+            setAudioError(false);
+          })
+          .catch(err => {
+            console.warn('Manual audio play failed:', err);
+            setAudioError(true);
+          });
+      }
+    } else {
+      setIsMuted(true);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        setIsPlayingAudio(false);
+      }
+    }
+  };
+
+  // Global Test Audio Trigger
+  const triggerAudioTest = () => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio('/sos-alarm.mp3');
+      audioRef.current.loop = true;
+    }
+    if (isPlayingAudio) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsPlayingAudio(false);
+    } else {
+      setIsMuted(false);
+      audioRef.current.play()
+        .then(() => {
+          setIsPlayingAudio(true);
+          setAudioError(false);
+        })
+        .catch(err => {
+          console.warn('Audio test failed:', err);
+          setAudioError(true);
+        });
+    }
   };
 
   // Dynamic summary stats calculation
@@ -292,6 +530,11 @@ export default function App() {
         unreadMessagesCount={summaryStats.unreadMessages}
         emergencyCount={summaryStats.emergencyAlerts}
         onOpenGlobalSearch={() => setActiveTab('patients')}
+        isMuted={isMuted}
+        isPlayingAudio={isPlayingAudio}
+        onToggleAudioMute={toggleAudioMute}
+        notificationPermission={notificationPermission}
+        onRequestNotificationPermission={requestDeviceNotificationPermission}
       />
 
       {/* Main Page Workspace */}
@@ -333,6 +576,10 @@ export default function App() {
               else handleViewPatient(p);
             }}
             onViewMedicalHistory={(p) => handleViewPatient(p)}
+            onStartConsultation={(apt, pat) => handleStartConsultation(apt, pat)}
+            onCallPatient={handleCallPatient}
+            onAddPatient={handleAddPatient}
+            onDeletePatient={handleDeletePatient}
           />
         )}
 
@@ -346,6 +593,7 @@ export default function App() {
             onRescheduleAppointment={handleRescheduleAppointment}
             onCancelAppointment={handleCancelAppointment}
             onAcceptAppointment={handleAcceptAppointment}
+            onCallPatient={handleCallPatient}
           />
         )}
 
@@ -356,6 +604,10 @@ export default function App() {
             onViewPatient={handleViewPatient}
             onMessagePatient={(p) => setActiveTab('messages')}
             onViewMedicalHistory={(p) => handleViewPatient(p)}
+            onStartConsultation={(apt, pat) => handleStartConsultation(apt, pat)}
+            onCallPatient={handleCallPatient}
+            onAddPatient={handleAddPatient}
+            onDeletePatient={handleDeletePatient}
           />
         )}
 
@@ -376,6 +628,15 @@ export default function App() {
             patients={patients}
             onViewPatient={handleViewPatient}
             onAcknowledgeEmergency={handleAcknowledgeEmergency}
+            isMuted={isMuted}
+            isPlayingAudio={isPlayingAudio}
+            onToggleAudioMute={toggleAudioMute}
+            onTriggerAudioTest={triggerAudioTest}
+            onCallPatient={handleCallPatient}
+            onStartConsultation={(apt, pat) => handleStartConsultation(apt, pat)}
+            notificationPermission={notificationPermission}
+            onRequestNotificationPermission={requestDeviceNotificationPermission}
+            onTriggerEmergencySOS={handleTriggerEmergencySOS}
           />
         )}
 
@@ -418,6 +679,7 @@ export default function App() {
           onViewPrescription={(rx) => setSelectedPrescription({ prescription: rx, patient: selectedPatientForProfile })}
           onDownloadReport={handleDownloadReport}
           onStartConsultation={(apt) => handleStartConsultation(apt, selectedPatientForProfile)}
+          onCallPatient={handleCallPatient}
         />
       )}
 
@@ -427,6 +689,13 @@ export default function App() {
           patient={selectedConsultationAppointment.patient}
           onClose={() => setSelectedConsultationAppointment(null)}
           onComplete={handleCompleteConsultation}
+        />
+      )}
+
+      {activePhoneCall && (
+        <ActivePhoneCallModal
+          callData={activePhoneCall}
+          onClose={() => setActivePhoneCall(null)}
         />
       )}
 

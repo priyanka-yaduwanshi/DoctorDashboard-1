@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calendar,
   Users,
@@ -22,7 +22,9 @@ import {
   Stethoscope,
   Info,
   UserCheck,
-  UserPlus
+  UserPlus,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 
 import { availableRespondersPool } from '../data/mockData';
@@ -51,6 +53,61 @@ export default function DoctorHome({
   const [selectedEta, setSelectedEta] = useState(emergencyWorkflow?.doctorEta || '3–5 min');
   const [newInterventionText, setNewInterventionText] = useState('');
   const [showProtocolForm, setShowProtocolForm] = useState(false);
+
+  // Dynamic time-of-day greeting & rotating clinical quotes
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [quoteIndex, setQuoteIndex] = useState(0);
+
+  const clinicalQuotes = [
+    { quote: "Wherever the art of Medicine is loved, there is also a love of Humanity.", author: "Hippocrates" },
+    { quote: "The good physician treats the disease; the great physician treats the patient who has the disease.", author: "Sir William Osler" },
+    { quote: "Medicine is a science of uncertainty and an art of probability.", author: "Sir William Osler" },
+    { quote: "To cure sometimes, to relieve often, to comfort always.", author: "Edward Livingston Trudeau" },
+    { quote: "The art of healing comes from nature, not from the physician.", author: "Paracelsus" },
+    { quote: "Care more particularly for the individual patient than for the special features of the disease.", author: "Sir William Osler" },
+    { quote: "Every patient is a story waiting to be understood and healed with clinical excellence.", author: "MedX Mindset" }
+  ];
+
+  useEffect(() => {
+    const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const quoteTimer = setInterval(() => {
+      setQuoteIndex(prev => (prev + 1) % clinicalQuotes.length);
+    }, 8000);
+
+    return () => {
+      clearInterval(clockTimer);
+      clearInterval(quoteTimer);
+    };
+  }, []);
+
+  const getGreetingInfo = (date) => {
+    const hour = date.getHours();
+    if (hour >= 5 && hour < 12) {
+      return { title: 'Good Morning', icon: '🌅', subtitle: 'Start your clinical day with precision & care.' };
+    } else if (hour >= 12 && hour < 17) {
+      return { title: 'Good Afternoon', icon: '☀️', subtitle: 'Mid-day clinical overview & patient queue updates.' };
+    } else if (hour >= 17 && hour < 22) {
+      return { title: 'Good Evening', icon: '🌆', subtitle: 'Evening consultations & daily patient summary.' };
+    } else {
+      return { title: 'Good Night', icon: '🌙', subtitle: 'On-call telemetry & emergency response desk active.' };
+    }
+  };
+
+  const greetingInfo = getGreetingInfo(currentTime);
+
+  const formattedDate = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  const formattedTime = currentTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
 
   // Patient live search quick results with Clinical Flags
   const searchResults = searchQuery.trim()
@@ -195,25 +252,57 @@ export default function DoctorHome({
   return (
     <div className="space-y-8 pb-12">
       
-      {/* GREETING HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-sky-900 via-slate-900 to-slate-900 text-white p-6 sm:p-8 rounded-2xl shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-sky-500/10 to-transparent pointer-events-none"></div>
-        
-        <div className="relative z-10 space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Good Morning, {doctorProfile.name} 👋
+      {/* DYNAMIC TIME-OF-DAY GREETING & ROTATING CLINICAL QUOTE HEADER BANNER */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-gradient-to-r from-sky-950 via-slate-900 to-sky-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl relative overflow-hidden border border-sky-800/40">
+        <div className="absolute -right-10 -top-10 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -left-10 -bottom-10 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        {/* Left Column: Dynamic Greeting & Rotating Quote */}
+        <div className="relative z-10 space-y-3 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-bold text-sky-200 border border-white/15">
+            <span>{greetingInfo.icon}</span>
+            <span>{greetingInfo.title}</span>
+            <span className="text-white/40">•</span>
+            <span className="text-emerald-400 flex items-center gap-1 font-mono text-[11px]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              Clinical Station Active
+            </span>
+          </div>
+
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            {greetingInfo.title}, {doctorProfile.name} 👋
           </h1>
-          <p className="text-sm text-sky-200/90 font-medium">
-            Here's your clinical command overview for today.
-          </p>
+
+          {/* Rotating Clinical & Motivational Quote */}
+          <div className="pt-1 flex items-start gap-3 text-xs sm:text-sm text-sky-100/90 font-medium italic bg-white/5 p-3.5 rounded-2xl border border-white/10 backdrop-blur-xs">
+            <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5 animate-pulse" />
+            <div className="flex-1 space-y-0.5">
+              <p className="leading-relaxed">"{clinicalQuotes[quoteIndex].quote}"</p>
+              <p className="text-[11px] text-sky-300 font-extrabold not-italic">— {clinicalQuotes[quoteIndex].author}</p>
+            </div>
+            <button
+              onClick={() => setQuoteIndex(prev => (prev + 1) % clinicalQuotes.length)}
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-sky-300 hover:text-white"
+              title="Next Clinical Thought"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/15 text-xs text-right">
-            <span className="text-sky-300 block font-semibold">Today's Date</span>
-            <span className="font-bold text-white text-sm">
-              {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-            </span>
+        {/* Right Column: Live Date & Time Display Badge */}
+        <div className="relative z-10 flex flex-col sm:flex-row lg:flex-col items-start lg:items-end justify-center gap-3 flex-shrink-0">
+          <div className="px-5 py-3.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/15 text-left lg:text-right shadow-md space-y-1">
+            <div className="flex items-center gap-1.5 justify-start lg:justify-end text-[11px] text-sky-300 font-bold uppercase tracking-wider">
+              <Clock className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+              <span>Live Command Clock</span>
+            </div>
+            <div className="font-mono text-xl sm:text-2xl font-black text-white tracking-wide">
+              {formattedTime}
+            </div>
+            <div className="text-xs text-sky-200 font-medium">
+              {formattedDate}
+            </div>
           </div>
         </div>
       </div>
@@ -673,8 +762,13 @@ export default function DoctorHome({
 
                 <button
                   onClick={() => {
-                    if (matchedPatient) onViewPatient(matchedPatient);
-                    else onNavigateTab(item.type === 'sos' ? 'emergency' : item.type === 'report' ? 'records' : 'appointments');
+                    if (item.type === 'sos' || item.actionLabel?.toLowerCase().includes('emergency')) {
+                      onNavigateTab('emergency');
+                    } else if (matchedPatient) {
+                      onViewPatient(matchedPatient);
+                    } else {
+                      onNavigateTab(item.type === 'report' ? 'records' : 'appointments');
+                    }
                   }}
                   className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex-shrink-0"
                 >
