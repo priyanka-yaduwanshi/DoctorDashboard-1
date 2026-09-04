@@ -4,7 +4,6 @@ import {
   Activity,
   Calendar,
   Users,
-  Search,
   MessageSquare,
   AlertTriangle,
   Clock,
@@ -87,43 +86,20 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* Prominent Global Patient Search Bar */}
-          <div className="flex-1 max-w-md mx-2 hidden md:block">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search by patient name, ID, phone or email..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (onOpenGlobalSearch) onOpenGlobalSearch();
-                }}
-                className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-slate-800 placeholder-slate-400 transition-all"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-600 bg-slate-200 px-1.5 py-0.5 rounded-sm"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* LIVE DATE & TIME HEADER BADGE (Visible across all main pages) */}
-          <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-slate-900 text-white rounded-xl shadow-2xs border border-slate-800">
-            <Clock className="w-4 h-4 text-sky-400 animate-pulse flex-shrink-0" />
-            <div className="text-right">
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-none">
-                {formattedDate}
-              </div>
-              <div className="font-mono text-xs font-extrabold text-sky-300 leading-tight">
-                {formattedTime}
+          {/* Header Action Controls & Live Clock */}
+          <div className="flex items-center gap-3">
+            {/* LIVE DATE & TIME HEADER BADGE (Visible across all main pages) */}
+            <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-slate-900 text-white rounded-xl shadow-2xs border border-slate-800">
+              <Clock className="w-4 h-4 text-sky-400 animate-pulse flex-shrink-0" />
+              <div className="text-right">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-none">
+                  {formattedDate}
+                </div>
+                <div className="font-mono text-xs font-extrabold text-sky-300 leading-tight">
+                  {formattedTime}
+                </div>
               </div>
             </div>
-          </div>
 
           {/* GLOBAL EMERGENCY SOS STATUS & AUDIO ALARM CONTROLS */}
           <div className="flex items-center gap-2">
@@ -192,9 +168,9 @@ export default function Navbar({
                 className="w-9 h-9 rounded-lg object-cover ring-2 ring-sky-500/20"
               />
             </div>
-
           </div>
         </div>
+      </div>
 
         {/* Navigation Tabs Bar */}
         <nav className="flex items-center space-x-1 overflow-x-auto py-2 border-t border-slate-100 no-scrollbar">

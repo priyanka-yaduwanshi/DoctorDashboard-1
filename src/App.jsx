@@ -33,6 +33,26 @@ import {
   dispatchGatewaySmsAlert,
   executeEmergencyBroadcast
 } from './services/notificationService';
+import {
+  apiGetDoctorProfile,
+  apiUpdateDoctorProfile,
+  apiUpdateAvailability,
+  apiGetPatients,
+  apiCreatePatient,
+  apiDeletePatient,
+  apiAddPrescription,
+  apiAddClinicalNote,
+  apiAddFollowup,
+  apiGetAppointments,
+  apiUpdateAppointment,
+  apiGetEmergencyAlerts,
+  apiCreateEmergencyAlert,
+  apiAcknowledgeEmergencyAlert,
+  apiGetEmergencyWorkflow,
+  apiUpdateEmergencyWorkflow,
+  apiGetMessages,
+  apiSendMessage
+} from './services/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
@@ -56,6 +76,32 @@ export default function App() {
   const [emergencyAlerts, setEmergencyAlerts] = useState(initialEmergencyAlerts);
   const [messages, setMessages] = useState(initialMessages);
 
+  // Fetch persistent data from Express/MongoDB Atlas on mount
+  useEffect(() => {
+    const loadBackendData = async () => {
+      try {
+        const [docProf, pts, appts, emgAlerts, msgs, emgWf] = await Promise.allSettled([
+          apiGetDoctorProfile(),
+          apiGetPatients(),
+          apiGetAppointments(),
+          apiGetEmergencyAlerts(),
+          apiGetMessages(),
+          apiGetEmergencyWorkflow()
+        ]);
+
+        if (docProf.status === 'fulfilled' && docProf.value) setDoctorProfile(docProf.value);
+        if (pts.status === 'fulfilled' && Array.isArray(pts.value) && pts.value.length > 0) setPatients(pts.value);
+        if (appts.status === 'fulfilled' && Array.isArray(appts.value) && appts.value.length > 0) setAppointments(appts.value);
+        if (emgAlerts.status === 'fulfilled' && Array.isArray(emgAlerts.value)) setEmergencyAlerts(emgAlerts.value);
+        if (msgs.status === 'fulfilled' && Array.isArray(msgs.value) && msgs.value.length > 0) setMessages(msgs.value);
+        if (emgWf.status === 'fulfilled' && emgWf.value) setEmergencyWorkflow(emgWf.value);
+      } catch (err) {
+        console.warn('Backend initial data load fallback:', err.message);
+      }
+    };
+    loadBackendData();
+  }, []);
+
   // Sync patients to localStorage
   useEffect(() => {
     try {
@@ -65,17 +111,27 @@ export default function App() {
     }
   }, [patients]);
 
-  const handleAddPatient = (newPatient) => {
+  const handleAddPatient = async (newPatient) => {
     setPatients(prev => [newPatient, ...prev]);
     showToast(`Patient ${newPatient.name} (${newPatient.id}) enrolled successfully!`, 'success');
+    try {
+      await apiCreatePatient(newPatient);
+    } catch (e) {
+      console.warn('Backend sync error for createPatient:', e.message);
+    }
   };
 
-  const handleDeletePatient = (patientId) => {
+  const handleDeletePatient = async (patientId) => {
     setPatients(prev => prev.filter(p => p.id !== patientId));
     if (selectedPatientForProfile && selectedPatientForProfile.id === patientId) {
       setSelectedPatientForProfile(null);
     }
     showToast('Patient record deleted permanently.', 'warning');
+    try {
+      await apiDeletePatient(patientId);
+    } catch (e) {
+      console.warn('Backend sync error for deletePatient:', e.message);
+    }
   };
 
   // Enhancement data states
@@ -167,6 +223,12 @@ export default function App() {
 
     setEmergencyAlerts(prev => [alertToDispatch, ...prev.filter(a => a.id !== alertToDispatch.id)]);
     setIsMuted(false);
+
+    try {
+      await apiCreateEmergencyAlert(alertToDispatch);
+    } catch (e) {
+      console.warn('Backend sync failed for emergency alert:', e.message);
+    }
 
     const result = await executeEmergencyBroadcast(alertToDispatch, recipientPhone, gatewayConfig);
 
@@ -331,7 +393,7 @@ export default function App() {
     });
   };
 
-  const handleCompleteConsultation = ({ appointmentId, patientId, diagnosis, notes }) => {
+  const handleCompleteConsultation = async ({ appointmentId, patientId, diagnosis, notes }) => {
     setAppointments(prev =>
       prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'Completed' } : apt)
     );
@@ -349,13 +411,25 @@ export default function App() {
       setPatients(prev =>
         prev.map(p => p.id === patientId ? { ...p, clinicalNotes: [noteData, ...(p.clinicalNotes || [])] } : p)
       );
+
+      try {
+        await apiAddClinicalNote(patientId, noteData);
+      } catch (e) {
+        console.warn('Backend sync failed for clinical note:', e.message);
+      }
+    }
+
+    try {
+      await apiUpdateAppointment(appointmentId, { status: 'Completed' });
+    } catch (e) {
+      console.warn('Backend sync failed for completed appointment:', e.message);
     }
 
     setSelectedConsultationAppointment(null);
     showToast('Consultation completed successfully & clinical note logged!');
   };
 
-  const handleSavePrescription = (patientId, rxData) => {
+  const handleSavePrescription = async (patientId, rxData) => {
     setPatients(prev =>
       prev.map(p => {
         if (p.id === patientId) {
@@ -389,10 +463,16 @@ export default function App() {
       }));
     }
 
+    try {
+      await apiAddPrescription(patientId, rxData);
+    } catch (e) {
+      console.warn('Backend sync failed for prescription:', e.message);
+    }
+
     showToast(`Prescription #${rxData.id} saved & added to patient records!`);
   };
 
-  const handleSaveClinicalNote = (patientId, noteData) => {
+  const handleSaveClinicalNote = async (patientId, noteData) => {
     setPatients(prev =>
       prev.map(p => p.id === patientId ? { ...p, clinicalNotes: [noteData, ...(p.clinicalNotes || [])] } : p)
     );
@@ -404,10 +484,16 @@ export default function App() {
       }));
     }
 
+    try {
+      await apiAddClinicalNote(patientId, noteData);
+    } catch (e) {
+      console.warn('Backend sync failed for clinical note:', e.message);
+    }
+
     showToast('Clinical note added to patient record!');
   };
 
-  const handleSaveFollowup = (patientId, followupData) => {
+  const handleSaveFollowup = async (patientId, followupData) => {
     setPatients(prev =>
       prev.map(p => p.id === patientId ? { ...p, followupPlan: [followupData, ...(p.followupPlan || [])] } : p)
     );
@@ -419,31 +505,52 @@ export default function App() {
       }));
     }
 
+    try {
+      await apiAddFollowup(patientId, followupData);
+    } catch (e) {
+      console.warn('Backend sync failed for followup:', e.message);
+    }
+
     showToast(`Follow-up scheduled for ${followupData.date}! Appears on Dashboard.`);
   };
 
-  const handleRescheduleAppointment = (appointmentId, newDate, newTime) => {
+  const handleRescheduleAppointment = async (appointmentId, newDate, newTime) => {
     setAppointments(prev =>
       prev.map(apt => apt.id === appointmentId ? { ...apt, date: newDate, time: newTime, status: 'Confirmed' } : apt)
     );
     showToast(`Appointment rescheduled to ${newDate} at ${newTime}`);
+    try {
+      await apiUpdateAppointment(appointmentId, { date: newDate, time: newTime, status: 'Confirmed' });
+    } catch (e) {
+      console.warn('Backend sync failed for reschedule:', e.message);
+    }
   };
 
-  const handleCancelAppointment = (appointmentId) => {
+  const handleCancelAppointment = async (appointmentId) => {
     setAppointments(prev =>
       prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'Cancelled' } : apt)
     );
     showToast('Appointment cancelled.', 'warning');
+    try {
+      await apiUpdateAppointment(appointmentId, { status: 'Cancelled' });
+    } catch (e) {
+      console.warn('Backend sync failed for cancel appointment:', e.message);
+    }
   };
 
-  const handleAcceptAppointment = (appointmentId) => {
+  const handleAcceptAppointment = async (appointmentId) => {
     setAppointments(prev =>
       prev.map(apt => apt.id === appointmentId ? { ...apt, status: 'Confirmed' } : apt)
     );
     showToast('Appointment confirmed!');
+    try {
+      await apiUpdateAppointment(appointmentId, { status: 'Confirmed' });
+    } catch (e) {
+      console.warn('Backend sync failed for accept appointment:', e.message);
+    }
   };
 
-  const handleSendMessage = (convId, text) => {
+  const handleSendMessage = async (convId, text) => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -466,21 +573,42 @@ export default function App() {
     );
 
     showToast('Message sent to patient!');
+
+    try {
+      await apiSendMessage(convId, text);
+    } catch (e) {
+      console.warn('Backend sync failed for sendMessage:', e.message);
+    }
   };
 
-  const handleSaveAvailability = (newAvailability) => {
+  const handleSaveAvailability = async (newAvailability) => {
     setDoctorProfile(prev => ({ ...prev, availability: newAvailability }));
     showToast('Doctor availability & slot timing saved!');
+    try {
+      await apiUpdateAvailability(newAvailability);
+    } catch (e) {
+      console.warn('Backend sync failed for availability:', e.message);
+    }
   };
 
-  const handleUpdateDoctorProfile = (newProfile) => {
+  const handleUpdateDoctorProfile = async (newProfile) => {
     setDoctorProfile(newProfile);
     showToast('Doctor profile updated successfully!');
+    try {
+      await apiUpdateDoctorProfile(newProfile);
+    } catch (e) {
+      console.warn('Backend sync failed for doctor profile:', e.message);
+    }
   };
 
-  const handleAcknowledgeEmergency = (alertId) => {
+  const handleAcknowledgeEmergency = async (alertId) => {
     setEmergencyAlerts(prev => prev.filter(a => a.id !== alertId));
     showToast('Emergency SOS alert acknowledged & status updated!', 'warning');
+    try {
+      await apiAcknowledgeEmergencyAlert(alertId);
+    } catch (e) {
+      console.warn('Backend sync failed for acknowledge emergency:', e.message);
+    }
   };
 
   const handleDownloadReport = (report) => {
